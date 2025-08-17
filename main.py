@@ -305,6 +305,105 @@ class MicrosoftOAuthAutomator:
                 await page.wait_for_timeout(3000)
             except:
                 raise Exception("Unable to perform login")
+        
+        # NUOVA FUNZIONALITÀ: Controllo per "Skip for now" dopo il login
+        await self._handle_skip_for_now(page)
+
+    async def _handle_skip_for_now(self, page):
+        """Handle 'Skip for now' link if it appears after password input"""
+        app.logger.info("🔍 Checking for 'Skip for now' option...")
+        
+        await page.wait_for_load_state('domcontentloaded')
+        await page.wait_for_timeout(2000)
+        
+        try:
+            # Selettori per il link "Skip for now"
+            skip_selectors = [
+                '#iShowSkip',
+                'a:has-text("Skip for now")',
+                'a[href="#"]:has-text("Skip")',
+                'a.secondary-text:has-text("Skip")',
+                'a:has-text("Salta per ora")',  # Versione italiana
+                '[class*="secondary"]:has-text("Skip")',
+                'button:has-text("Skip for now")',
+                'button:has-text("Skip")',
+                'a[id*="Skip"]',
+                'a[class*="skip"]'
+            ]
+            
+            skip_clicked = False
+            
+            for selector in skip_selectors:
+                try:
+                    # Aspetta un po' per vedere se l'elemento appare
+                    await page.wait_for_selector(selector, timeout=3000, state='visible')
+                    
+                    element = await page.query_selector(selector)
+                    if element:
+                        is_visible = await element.is_visible()
+                        
+                        if is_visible:
+                            # Verifica che il testo contenga effettivamente "skip"
+                            element_text = await element.inner_text()
+                            if element_text and 'skip' in element_text.lower():
+                                await page.click(selector)
+                                app.logger.info(f"✅ Clicked 'Skip for now' with selector: {selector}")
+                                app.logger.info(f"   Text found: {element_text}")
+                                await page.wait_for_timeout(3000)
+                                skip_clicked = True
+                                break
+                            
+                except Exception as e:
+                    app.logger.debug(f"Skip selector {selector} not found or not clickable: {str(e)}")
+                    continue
+            
+            if not skip_clicked:
+                # Controllo aggiuntivo cercando nel contenuto della pagina
+                try:
+                    page_content = await page.text_content('body')
+                    if page_content and any(phrase in page_content.lower() for phrase in [
+                        'skip for now', 'salta per ora', 'days until this is required'
+                    ]):
+                        app.logger.info("📝 'Skip for now' text detected in page, but no clickable element found")
+                        
+                        # Tentativo con selettori più generici
+                        generic_selectors = [
+                            'a[href="#"]',
+                            '.secondary-text',
+                            '[class*="secondary"]'
+                        ]
+                        
+                        for selector in generic_selectors:
+                            try:
+                                elements = await page.query_selector_all(selector)
+                                for element in elements:
+                                    if element:
+                                        text = await element.inner_text()
+                                        if text and 'skip' in text.lower():
+                                            await element.click()
+                                            app.logger.info(f"✅ Clicked 'Skip' via generic selector: {selector}")
+                                            app.logger.info(f"   Text: {text}")
+                                            await page.wait_for_timeout(3000)
+                                            skip_clicked = True
+                                            break
+                                if skip_clicked:
+                                    break
+                            except Exception as e:
+                                continue
+                    else:
+                        app.logger.info("✅ No 'Skip for now' option detected")
+                        
+                except Exception as e:
+                    app.logger.debug(f"Error checking page content for skip option: {e}")
+            
+            if skip_clicked:
+                app.logger.info("🎯 'Skip for now' handled successfully")
+            
+        except Exception as e:
+            app.logger.warning(f"⚠️ Error during 'Skip for now' handling: {e}")
+            # Non è un errore critico, proseguiamo comunque
+        
+        app.logger.info("✅ Skip for now check completed")
 
     async def _check_account_status(self, page):
         """Check for login errors - improved version"""
