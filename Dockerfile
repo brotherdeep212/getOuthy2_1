@@ -1,14 +1,11 @@
-# Usa un'immagine base Python ufficiale con Ubuntu
 FROM python:3.11-slim
 
-# Imposta la directory di lavoro nel container
 WORKDIR /app
 
-# Installa dipendenze di sistema essenziali
+# Installa le dipendenze di sistema necessarie per Playwright e Chromium
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
-    software-properties-common \
     curl \
     ca-certificates \
     fonts-liberation \
@@ -22,9 +19,8 @@ RUN apt-get update && apt-get install -y \
     libdbus-1-3 \
     libexpat1 \
     libfontconfig1 \
-    libgcc1 \
-    libgconf-2-4 \
-    libgdk-pixbuf2.0-0 \
+    libgcc-s1 \
+    libgdk-pixbuf-2.0-0 \
     libglib2.0-0 \
     libgtk-3-0 \
     libnspr4 \
@@ -47,29 +43,34 @@ RUN apt-get update && apt-get install -y \
     libxtst6 \
     lsb-release \
     xdg-utils \
+    libdrm2 \
+    libxkbcommon0 \
+    libatspi2.0-0 \
+    xvfb \
     && rm -rf /var/lib/apt/lists/*
 
-# Copia requirements e installa le dipendenze Python
+# Copia requirements.txt
 COPY requirements.txt .
+
+# Installa le dipendenze Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Installa Playwright e i browser
-RUN playwright install-deps chromium
+# Installa Playwright e scarica Chromium
 RUN playwright install chromium
 
-# Verifica l'installazione di Playwright
-RUN playwright install-deps
-RUN python -c "from playwright.sync_api import sync_playwright; print('Playwright installed successfully')"
+# Installa le dipendenze specifiche per Chromium se mancanti
+RUN playwright install-deps chromium
 
 # Copia il codice dell'applicazione
 COPY . .
 
-# Imposta variabili d'ambiente
-ENV PORT=8080
-ENV PYTHONUNBUFFERED=1
+# Crea un utente non-root per motivi di sicurezza
+RUN useradd -m -u 1000 playwright && \
+    chown -R playwright:playwright /app
+USER playwright
 
-# Esponi la porta
+# Espone la porta
 EXPOSE 8080
 
-# Comando di avvio
-CMD ["gunicorn", "--workers", "1", "--threads", "4", "--timeout", "600", "--bind", "0.0.0.0:8080", "main:app"]
+# Comando per avviare l'applicazione
+CMD ["python", "main.py"]
